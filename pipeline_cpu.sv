@@ -439,8 +439,9 @@ module pipeline_cpu
     logic   [DMEM_ADDR_WIDTH-1:0]    dmem_addr;
     logic   [31:0]  dmem_din, dmem_dout;
 
-    assign dmem_addr =  /* FILL THIS */ 
-    assign dmem_din =  /* FILL THIS */ 
+    assign dmem_addr = mem.alu_result;
+
+    assign dmem_din =  mem.rs2_dout;
     
     // instantiation: data memory
     dmem #(
@@ -450,8 +451,8 @@ module pipeline_cpu
         .clk                (clk),
         .addr               (dmem_addr),
         .din                (dmem_din),
-        .mem_read           ( /* FILL THIS */ ),
-        .mem_write          ( /* FILL THIS */ ),
+        .mem_read           (mem.mem_read),
+        .mem_write          (mem.mem_write),
         .dout               (dmem_dout)
     );
 
