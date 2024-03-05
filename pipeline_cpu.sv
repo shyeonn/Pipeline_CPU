@@ -87,7 +87,7 @@ module pipeline_cpu
     logic           regfile_zero;   // zero detection from regfile, REMOVED
 
     assign pc_next_plus4 = pc_curr + 4;
-    assign pc_next_sel = /* FILL THIS */ 
+    assign pc_next_sel = branch_taken;
     assign pc_next = (pc_next_sel) ? pc_next_branch: pc_next_plus4;
 
     always_ff @ (posedge clk or negedge reset_b) begin
@@ -362,8 +362,8 @@ module pipeline_cpu
     logic   [REG_WIDTH-1:0] alu_result;
     //logic           alu_zero;   // will not be used
 
-    assign alu_in1 =  
-    assign alu_in2 =  /* FILL THIS */ 
+    assign alu_in1 = alu_fwd_in1;
+    assign alu_in2 = alu_fwd_in2;
 
     // instantiation: ALU
     alu #(
@@ -382,10 +382,11 @@ module pipeline_cpu
     logic           bu_zero, bu_sign;
     //logic           branch_taken;
 
-    assign sub_for_branch =  /* FILL THIS */ 
-    assign bu_zero =  /* FILL THIS */ 
-    assign bu_sign =  /* FILL THIS */ 
-    assign branch_taken =  /* FILL THIS */
+    assign sub_for_branch = alu_in1 - alu_in2; 
+    assign bu_zero =  |sub_for_branch;
+    assign bu_sign = sub_for_branch[REG_WIDTH-2];
+    assign branch_taken = (branch[0] & bu_zero) | (branch[1] & ~bu_zero) 
+    | (branch[2] & bu_sign) | (branch[3] & ~bu_sign);
 
     // -------------------------------------------------------------------------
     /* Ex/MEM pipeline register
