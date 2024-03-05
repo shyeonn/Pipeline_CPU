@@ -297,8 +297,6 @@ module pipeline_cpu
      * - ALU & ALU control
      * - Data forwarding unit
      */
-     alu
-
 
 
      
@@ -340,43 +338,22 @@ module pipeline_cpu
 
 	/* verilator lint_off CASEX */
    // COMPLETE FORWARDING MUXES
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
+    alu_fwd_in1 = forward_a ? (forward_a[1] : mem.alu_result ? rd_din) : rs1_dout;
+    alu_fwd_in2 = forward_b ? (forward_b[1] : mem.alu_result ? rd_din) : rs2_dout;
+  
+  
 	/* verilator lint_on CASEX */
 
 	// COMPLETE THE FORWARDING UNIT
     // Need to prioritize forwarding conditions
 
+    //MEM hazard
+    forward_a = wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2) ? 2'b01 : 2'b00;
+    forward_b = wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2) ? 2'b01 : 2'b00;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    //EX hazard (If MEM and EX hazard generate at once, then ignore the MEM hazard signal)
+    forward_a = mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs1) ? 2'b10 : 2'b00;
+    forward_b = mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2) ? 2'b10 : 2'b00;
 
     // -----------------------------------------------------------------------
 
@@ -385,7 +362,7 @@ module pipeline_cpu
     logic   [REG_WIDTH-1:0] alu_result;
     //logic           alu_zero;   // will not be used
 
-    assign alu_in1 =  /* FILL THIS */ 
+    assign alu_in1 =  
     assign alu_in2 =  /* FILL THIS */ 
 
     // instantiation: ALU
@@ -481,6 +458,6 @@ module pipeline_cpu
      * - Write results to regsiter file
      */
     
-    assign rd_din = wb.rd;  
+    assign rd_din = mem_to_reg ? wb.dmem_dout : wb.alu_result;  
 
 endmodule
