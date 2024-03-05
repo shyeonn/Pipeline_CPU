@@ -245,10 +245,11 @@ module pipeline_cpu
         .clk                (clk),
         .rs1                (rs1),
         .rs2                (rs2),
-        .rd                 (rd),
         //From WB stage
+        .rd                 (wb.rd),
+        .reg_write          (wb.reg_write),
         .rd_din             (rd_din),
-        .reg_write          (reg_write),
+        //For EX stage
         .rs1_dout           (rs1_dout),
         .rs2_dout           (rs2_dout)
     );
@@ -466,16 +467,11 @@ module pipeline_cpu
             wb <= 'b0;
         end else begin
              /* FILL THIS */ 
-			 
-			 
-			 
-			 
-			 
-			 
-			 
-			 
-			 
-			 
+            wb.alu_result <= mem.alu_result;
+            wb.dmem_dout <= dmem_dout;
+            wb.rd <= mem.rd;
+            wb.reg_write <= mem.reg_write;
+            wb.mem_to_reg <= mem.mem_to_reg;
         end
     end
 
@@ -484,6 +480,6 @@ module pipeline_cpu
      * - Write results to regsiter file
      */
     
-    assign rd_din =  /* FILL THIS */ 
+    assign rd_din = wb.rd;  
 
 endmodule
