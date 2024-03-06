@@ -95,7 +95,7 @@ module pipeline_cpu
             pc_curr <= 'b0;
         end else begin
             if (pc_write) begin
-            pc_curr = pc_next;
+            pc_curr <= pc_next;
         end
         end
     end
@@ -272,26 +272,27 @@ module pipeline_cpu
         if (~reset_b) begin
             ex <= 'b0;
         end else begin
-        if (id_flush) begin
-            ex <= 'b0;
-        end
-        ex.pc <= id.pc;
-        ex.rs1_dout <= rs1_dout;
-        ex.rs2_dout <= rs2_dout;
-        ex.imm32 <= imm32;
-        ex.funct3 <= funct3;
-        ex.funct7 <= funct7;
-        //control signal
-
-        ex.branch <= branch;
-        ex.alu_src <= alu_src;
-        ex.alu_op <= alu_op;
-        ex.mem_read <= mem_read;
-        ex.mem_write <= mem_write;
-        ex.rs1 <= rs1;
-        ex.rs2 <= rs2;
-        ex.reg_write <= reg_write;
-        ex.mem_to_reg <= mem_to_reg;
+            if (id_flush) begin
+                ex <= 'b0;
+            end
+            else if (~id_stall) begin
+                ex.pc <= id.pc;
+                ex.rs1_dout <= rs1_dout;
+                ex.rs2_dout <= rs2_dout;
+                ex.imm32 <= imm32;
+                ex.funct3 <= funct3;
+                ex.funct7 <= funct7;
+                //control signal
+                ex.branch <= branch;
+                ex.alu_src <= alu_src;
+                ex.alu_op <= alu_op;
+                ex.mem_read <= mem_read;
+                ex.mem_write <= mem_write;
+                ex.rs1 <= rs1;
+                ex.rs2 <= rs2;
+                ex.reg_write <= reg_write;
+                ex.mem_to_reg <= mem_to_reg;
+            end
         end
     end
 
@@ -342,8 +343,8 @@ module pipeline_cpu
 
 	/* verilator lint_off CASEX */
    // COMPLETE FORWARDING MUXES
-    alu_fwd_in1 = forward_a ? (forward_a[1] : mem.alu_result ? rd_din) : rs1_dout;
-    alu_fwd_in2 = forward_b ? (forward_b[1] : mem.alu_result ? rd_din) : rs2_dout;
+    assign alu_fwd_in1 = |forward_a ? (forward_a[1] ? mem.alu_result : rd_din) : rs1_dout;
+    assign alu_fwd_in2 = |forward_b ? (forward_b[1] ? mem.alu_result : rd_din) : rs2_dout;
   
   
 	/* verilator lint_on CASEX */
@@ -352,12 +353,12 @@ module pipeline_cpu
     // Need to prioritize forwarding conditions
 
     //MEM hazard
-    forward_a = wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2) ? 2'b01 : 2'b00;
-    forward_b = wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2) ? 2'b01 : 2'b00;
+    assign forward_a[0] = (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0;
+    assign forward_b[0] = (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0;
 
     //EX hazard (If MEM and EX hazard generate at once, then ignore the MEM hazard signal)
-    forward_a = mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs1) ? 2'b10 : 2'b00;
-    forward_b = mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2) ? 2'b10 : 2'b00;
+    assign forward_a[1] = (mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs1)) ? 1'b1 : 1'b0;
+    assign forward_b[1] = (mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2)) ? 1'b1 : 1'b0;
 
     // -----------------------------------------------------------------------
 
@@ -421,7 +422,7 @@ module pipeline_cpu
     logic   [DMEM_ADDR_WIDTH-1:0]    dmem_addr;
     logic   [31:0]  dmem_din, dmem_dout;
 
-    assign dmem_addr = mem.alu_result;
+    assign dmem_addr = mem.alu_result[DMEM_ADDR_WIDTH-1:0];
 
     assign dmem_din =  mem.rs2_dout;
     
