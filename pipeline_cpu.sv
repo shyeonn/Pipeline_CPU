@@ -84,7 +84,7 @@ module pipeline_cpu
     logic   [31:0]  pc_next_plus4, pc_next_branch;
     logic           pc_next_sel;
     logic           branch_taken;
-    logic           regfile_zero;   // zero detection from regfile, REMOVED
+    //logic           regfile_zero;   // zero detection from regfile, REMOVED
 
     assign pc_next_plus4 = pc_curr + 4;
     assign pc_next_sel = branch_taken;
@@ -94,8 +94,9 @@ module pipeline_cpu
         if (~reset_b) begin
             pc_curr <= 'b0;
         end else begin
+            if (pc_write) begin
             pc_curr = pc_next;
-             /* FILL THIS */ 
+        end
         end
     end
 
@@ -217,12 +218,12 @@ module pipeline_cpu
     assign stall_by_load_use = ex.mem_read && ((ex.rd == rs1) || (ex.rd == rs2));
     assign flush_by_branch = branch_taken; 
   
-    assign id_flush =  flush_by_branch
-    assign id_stall =  stall_by_load_use;
+    assign id_flush =  flush_by_branch;
+    assign id_stall = stall_by_load_use;
 	
     assign if_flush =  flush_by_branch;
-    assign if_stall =  /* FILL THIS */ 
-    assign pc_write =  /* FILL THIS */
+    assign if_stall =  stall_by_load_use;
+    assign pc_write =  stall_by_load_use;
 
     // ----------------------------------------------------------------------
 
@@ -254,7 +255,7 @@ module pipeline_cpu
         .rs2_dout           (rs2_dout)
     );
 
-    assign regfile_zero = ~|(rs1_dout ^ rs2_dout);
+    //assign regfile_zero = ~|(rs1_dout ^ rs2_dout);
 
     assign funct7 = inst[31:25];
     assign funct3 = inst[14:12];
@@ -271,22 +272,26 @@ module pipeline_cpu
         if (~reset_b) begin
             ex <= 'b0;
         end else begin
-             /* FILL THIS */ 
-             ex.pc <= id.pc;
-             ex.rs1_dout <= rs1_dout;
-             ex.rs2_dout <= rs2_dout;
-             ex.imm32 <= imm32;
-             ex.funct3 <= funct3;
-             ex.funct7 <= funct7;
-             ex.branch <= branch;
-             ex.alu_src <= alu_src;
-             ex.alu_op <= alu_op;
-             ex.mem_read <= mem_read;
-             ex.mem_write <= mem_write;
-             ex.rs1 <= rs1;
-             ex.rs2 <= rs2;
-             ex.reg_write <= reg_write;
-             ex.mem_to_reg <= mem_to_reg;
+        if (id_flush) begin
+            ex <= 'b0;
+        end
+        ex.pc <= id.pc;
+        ex.rs1_dout <= rs1_dout;
+        ex.rs2_dout <= rs2_dout;
+        ex.imm32 <= imm32;
+        ex.funct3 <= funct3;
+        ex.funct7 <= funct7;
+        //control signal
+
+        ex.branch <= branch;
+        ex.alu_src <= alu_src;
+        ex.alu_op <= alu_op;
+        ex.mem_read <= mem_read;
+        ex.mem_write <= mem_write;
+        ex.rs1 <= rs1;
+        ex.rs2 <= rs2;
+        ex.reg_write <= reg_write;
+        ex.mem_to_reg <= mem_to_reg;
         end
     end
 
@@ -310,7 +315,6 @@ module pipeline_cpu
     logic   [3:0]   alu_control;    // ALU control signal
 
     // COMPLETE ALU CONTROL UNIT
-    //
 
     // COMPLETE THE ALU CONTROL UNIT HERE
 
@@ -409,7 +413,7 @@ module pipeline_cpu
 
 
     // --------------------------------------------------------------------------
-    /* Memory srage
+    /* Memory stage
      * - Data memory accesses
      */
 
