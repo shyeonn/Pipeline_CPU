@@ -38,6 +38,7 @@ typedef struct packed {
     logic   [4:0]   rd;         // rd for regfile
     logic           reg_write;
     logic           mem_to_reg;
+    logic           use_rs2; //Cheking for use the rs2 register
 } pipe_id_ex;
 
 // Pipe reg: EX/MEM
@@ -88,13 +89,13 @@ module pipeline_cpu
 
     assign pc_next_plus4 = pc_curr + 4;
     assign pc_next_sel = branch_taken;
-    assign pc_next = (pc_next_sel) ? pc_next_branch: pc_next_plus4;
+    assign pc_next = (pc_next_sel) ? pc_next_branch : pc_next_plus4;
 
     always_ff @ (posedge clk or negedge reset_b) begin
         if (~reset_b) begin
             pc_curr <= 'b0;
         end else begin
-            if (pc_write) begin
+            if (~pc_write) begin
             pc_curr <= pc_next;
         end
         end
@@ -192,18 +193,19 @@ module pipeline_cpu
     // COMPLETE IMMEDIATE GENERATOR HERE
     logic   [11:0]  imm12;
 
-    assign imm12 = (|branch) ? {inst[31], inst[7], inst[30:25], inst[11:8]}: 
-                ( (mem_write) ? {inst[31:25], inst[11:7]}: inst[31:20] );
+    assign imm12 = (|branch) ? {id.inst[31], id.inst[7], id.inst[30:25], id.inst[11:8]}: 
+                ( (mem_write) ? {id.inst[31:25], id.inst[11:7]}: id.inst[31:20] );
     assign imm32 = { {20{imm12[11]}}, imm12 };
-    assign imm32_branch = {imm32[30:0], 1'b0}; // << 1 for branch
+
+    assign imm32_branch = {ex.imm32[30:0], 1'b0}; // From excute stage
 
     // Computing branch target
-    assign pc_next_branch =  pc_curr + imm32_branch;
+    assign pc_next_branch = ex.pc + imm32_branch;
 
     // ----------------------------------------------------------------------
 
     // ----------------------------------------------------------------------
-    /* Hazard detection unit
+    /* Hazard detection unit(ID stage)
      * - Detecting data hazards from load instrcutions
      * - Detecting control hazards from taken branches
      */
@@ -214,8 +216,12 @@ module pipeline_cpu
     
     logic           id_stall, id_flush;
 
+    logic           use_rs2;
 
-    assign stall_by_load_use = ex.mem_read && ((ex.rd == rs1) || (ex.rd == rs2));
+
+    //S, R, SB type use rs2 register
+    assign use_rs2 = (opcode == 7'b0100011) || (opcode == 7'b0110011) || (opcode == 7'b1100011);
+    assign stall_by_load_use = ex.mem_read && ((ex.rd == rs1) || (use_rs2 && (ex.rd == rs2)));
     assign flush_by_branch = branch_taken; 
   
     assign id_flush =  flush_by_branch;
@@ -233,9 +239,9 @@ module pipeline_cpu
     logic   [REG_WIDTH-1:0] rd_din;
     logic   [REG_WIDTH-1:0] rs1_dout, rs2_dout;
     
-    assign rs1 = inst[19:15];
-    assign rs2 = inst[24:20];
-    assign rd = inst[11:7];
+    assign rs1 = id.inst[19:15];
+    assign rs2 = id.inst[24:20];
+    assign rd = id.inst[11:7];
     // rd, rd_din, and reg_write will be determined in WB stage
     
     // instnatiation of register file
@@ -257,8 +263,8 @@ module pipeline_cpu
 
     //assign regfile_zero = ~|(rs1_dout ^ rs2_dout);
 
-    assign funct7 = inst[31:25];
-    assign funct3 = inst[14:12];
+    assign funct7 = id.inst[31:25];
+    assign funct3 = id.inst[14:12];
 
     // ------------------------------------------------------------------
 
@@ -272,10 +278,9 @@ module pipeline_cpu
         if (~reset_b) begin
             ex <= 'b0;
         end else begin
-            if (id_flush) begin
+            if (id_flush | id_stall) begin
                 ex <= 'b0;
-            end
-            else if (~id_stall) begin
+            end else begin
                 ex.pc <= id.pc;
                 ex.rs1_dout <= rs1_dout;
                 ex.rs2_dout <= rs2_dout;
@@ -290,8 +295,11 @@ module pipeline_cpu
                 ex.mem_write <= mem_write;
                 ex.rs1 <= rs1;
                 ex.rs2 <= rs2;
+                ex.rd <= rd;
                 ex.reg_write <= reg_write;
                 ex.mem_to_reg <= mem_to_reg;
+
+                ex.use_rs2 <= use_rs2;
             end
         end
     end
@@ -320,15 +328,15 @@ module pipeline_cpu
     // COMPLETE THE ALU CONTROL UNIT HERE
 
     always_comb begin
-        if (alu_op[1]) begin
+        if (ex.alu_op[1]) begin
             case (ex.funct3)
                 3'b111: alu_control = 4'b0000;
                 3'b110: alu_control = 4'b0001;
                 3'b100: alu_control = 4'b0011;
-                default: alu_control = (funct7[5]) ? 4'b0110: 4'b0010;
+                default: alu_control = (use_rs2 & (ex.funct7[5])) ? 4'b0110: 4'b0010;
             endcase
         end else begin
-            alu_control = (alu_op[0]) ? 4'b0110: 4'b0010;
+            alu_control = (ex.alu_op[0]) ? 4'b0110: 4'b0010;
         end
     end
 
@@ -343,8 +351,9 @@ module pipeline_cpu
 
 	/* verilator lint_off CASEX */
    // COMPLETE FORWARDING MUXES
-    assign alu_fwd_in1 = |forward_a ? (forward_a[1] ? mem.alu_result : rd_din) : rs1_dout;
-    assign alu_fwd_in2 = |forward_b ? (forward_b[1] ? mem.alu_result : rd_din) : rs2_dout;
+    assign alu_fwd_in1 = |forward_a ? (forward_a[1] ? mem.alu_result : rd_din) : ex.rs1_dout;
+    assign alu_fwd_in2 = |forward_b ? (forward_b[1] ? mem.alu_result : rd_din) : 
+        ((ex.alu_src) ? ex.imm32 : ex.rs2_dout);
   
   
 	/* verilator lint_on CASEX */
@@ -353,12 +362,14 @@ module pipeline_cpu
     // Need to prioritize forwarding conditions
 
     //MEM hazard
-    assign forward_a[0] = (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0;
-    assign forward_b[0] = (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0;
+    assign forward_a[0] = (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs1)) ? 1'b1 : 1'b0;
+    assign forward_b[0] = ex.use_rs2 & 
+        ((wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0);
 
     //EX hazard (If MEM and EX hazard generate at once, then ignore the MEM hazard signal)
     assign forward_a[1] = (mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs1)) ? 1'b1 : 1'b0;
-    assign forward_b[1] = (mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2)) ? 1'b1 : 1'b0;
+    assign forward_b[1] = ex.use_rs2 & 
+        ((mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2)) ? 1'b1 : 1'b0);
 
     // -----------------------------------------------------------------------
 
@@ -388,10 +399,10 @@ module pipeline_cpu
     //logic           branch_taken;
 
     assign sub_for_branch = alu_in1 - alu_in2; 
-    assign bu_zero =  |sub_for_branch;
+    assign bu_zero =  !sub_for_branch;
     assign bu_sign = sub_for_branch[REG_WIDTH-2];
-    assign branch_taken = (branch[0] & bu_zero) | (branch[1] & ~bu_zero) 
-    | (branch[2] & bu_sign) | (branch[3] & ~bu_sign);
+    assign branch_taken = (ex.branch[0] & bu_zero) | (ex.branch[1] & ~bu_zero) 
+    | (ex.branch[2] & bu_sign) | (ex.branch[3] & ~bu_sign);
 
     // -------------------------------------------------------------------------
     /* Ex/MEM pipeline register
@@ -422,8 +433,7 @@ module pipeline_cpu
     logic   [DMEM_ADDR_WIDTH-1:0]    dmem_addr;
     logic   [31:0]  dmem_din, dmem_dout;
 
-    assign dmem_addr = mem.alu_result[DMEM_ADDR_WIDTH-1:0];
-
+    assign dmem_addr = mem.alu_result[DMEM_ADDR_WIDTH-1:2];
     assign dmem_din =  mem.rs2_dout;
     
     // instantiation: data memory
@@ -464,6 +474,6 @@ module pipeline_cpu
      * - Write results to regsiter file
      */
     
-    assign rd_din = mem_to_reg ? wb.dmem_dout : wb.alu_result;  
+    assign rd_din = wb.mem_to_reg ? wb.dmem_dout : wb.alu_result;  
 
 endmodule
