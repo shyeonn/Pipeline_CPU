@@ -436,6 +436,12 @@ module pipeline_cpu
     assign dmem_addr = mem.alu_result[DMEM_ADDR_WIDTH-1:2];
     assign dmem_din =  mem.rs2_dout;
     
+    //For unaligned memmory
+	logic [1:0]		access_size;
+	logic [31:0]	dmem_dout_raw;
+
+	assign access_size = funct3[1:0];
+
     // instantiation: data memory
     dmem #(
         .DMEM_DEPTH         (DMEM_DEPTH),
@@ -443,11 +449,22 @@ module pipeline_cpu
     ) u_dmem_0 (
         .clk                (clk),
         .addr               (dmem_addr),
+		.rd_en				(mem.mem_read),
+		.wr_en				(mem.mem_write),
+		.sz					(access_size),
         .din                (dmem_din),
-        .mem_read           (mem.mem_read),
-        .mem_write          (mem.mem_write),
-        .dout               (dmem_dout)
+        .dout               (dmem_dout_raw)
     );
+
+	always_comb begin
+		case (access_size)
+		  2'b00 : dmem_dout = funct3[2] ? {24'b0, dmem_dout_raw[7:0]} 
+          : {{24{dmem_dout_raw[7]}}, dmem_dout_raw[7:0]};
+		  2'b01 : dmem_dout = funct3[2] ? {16'b0, dmem_dout_raw[15:0]} 
+          : {{16{dmem_dout_raw[15]}}, dmem_dout_raw[15:0]};
+		  2'b10 : dmem_dout = dmem_dout_raw;
+		endcase 
+	end
 
 
     // -----------------------------------------------------------------------
