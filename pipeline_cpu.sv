@@ -328,15 +328,25 @@ module pipeline_cpu
     // COMPLETE THE ALU CONTROL UNIT HERE
 
     always_comb begin
+
+        //r-type or i-type
         if (ex.alu_op[1]) begin
             case (ex.funct3)
-                3'b111: alu_control = 4'b0000;
-                3'b110: alu_control = 4'b0001;
-                3'b100: alu_control = 4'b0011;
+                //logical
+                3'b111: alu_control = 4'b0000; //and
+                3'b110: alu_control = 4'b0001; //or
+                3'b100: alu_control = 4'b0011; //xor
+                //shift
+                3'b001: alu_control = 4'b1000; //sl
+                3'b101: alu_control = funct7[5] ? 4'b1011 : 4'b1010; //sr(logi) / sr(ari)
+                //compare
+                3'b010: alu_control = 4'b0110; //set less then
+                3'b011: alu_control = 4'b0110; //set less then unsigned
+                //sub / add
                 default: alu_control = (use_rs2 & (ex.funct7[5])) ? 4'b0110: 4'b0010;
             endcase
         end else begin
-            alu_control = (ex.alu_op[0]) ? 4'b0110: 4'b0010;
+            alu_control = (ex.alu_op[0]) ? 4'b0110: 4'b0010; // branch / ld/st
         end
     end
 
