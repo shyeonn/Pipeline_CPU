@@ -39,6 +39,9 @@ typedef struct packed {
     logic           reg_write;
     logic           mem_to_reg;
     logic           use_rs2; //Cheking for use the rs2 register
+
+    logic           jump;
+    logic           u_type;
 } pipe_id_ex;
 
 // Pipe reg: EX/MEM
@@ -173,12 +176,16 @@ module pipeline_cpu
     assign mem_read = (opcode==7'b0000011) ? 1'b1: 1'b0;    // ld
     assign mem_write = (opcode==7'b0100011) ? 1'b1: 1'b0;   // sd
     assign mem_to_reg = mem_read;
-    assign reg_write = (opcode==7'b0110011) | (opcode==7'b0010011) | mem_read; // ld, r-type, or i-type
-    // ld, sd, or i-type
-    assign alu_src = ( mem_read | mem_write | (opcode==7'b0010011) ) ? 1'b1: 1'b0;   
+    // ld, r-type, i-type, u-type or uj-type
+    assign reg_write = (opcode==7'b0110011) | (opcode==7'b0010011) | mem_read | u_type | jump; 
+    // ld, sd, i-type or u-type
+    assign alu_src = ( mem_read | mem_write | (opcode==7'b0010011) | u_type) ? 1'b1: 1'b0;   
 
     assign alu_op[0] = |branch;
     assign alu_op[1] = (opcode==7'b0110011) | (opcode==7'b0010011);    // r-type or i-type
+
+    assign jump = ~|(opcode ^ 7'b1100111) | ~|(opcode ^ 7'b1101111);
+    assign u_type = ~|(opcode ^ 7'b0010111) | ~|(opcode ^ 7'b0110111);
 
 
     // --------------------------------------------------------------------
@@ -192,12 +199,16 @@ module pipeline_cpu
 
     // COMPLETE IMMEDIATE GENERATOR HERE
     logic   [11:0]  imm12;
+    logic   [REG_WIDTH-2:0]  imm_jal;
 
     assign imm12 = (|branch) ? {id.inst[31], id.inst[7], id.inst[30:25], id.inst[11:8]}: 
                 ( (mem_write) ? {id.inst[31:25], id.inst[11:7]}: id.inst[31:20] );
-    assign imm32 = { {20{imm12[11]}}, imm12 };
+    assign imm_jal = {{12{inst[31]}}, inst[19:12], inst[20], inst[30:21]}; //JAL
 
-    assign imm32_branch = {ex.imm32[30:0], 1'b0}; // From excute stage
+	assign imm32 = u_type : {id.inst[31:12], 12'b0}
+        ? ((jump & opcode[3]) ? imm_jal : ({{20{imm12[11]}}, imm12}));
+
+    assign imm32_branch = {ex.imm32[30:0], 1'b0}; // From execute stage
 
     // Computing branch target
     assign pc_next_branch = ex.pc + imm32_branch;
@@ -386,9 +397,12 @@ module pipeline_cpu
     // ALU
     logic   [REG_WIDTH-1:0] alu_in1, alu_in2;
     logic   [REG_WIDTH-1:0] alu_result;
+    logic   [31:0] u_type_rs1;
     //logic           alu_zero;   // will not be used
-
-    assign alu_in1 = alu_fwd_in1;
+    
+    //LUI input is zero, AUIPC input is PC
+    assign u_type_rs1 = (ex.opcode == 7'b0110111) ? 'b0 : ex.pc; 
+    assign alu_in1 = ex.u_type ? u_type_rs1 : alu_fwd_in1; 
     assign alu_in2 = alu_fwd_in2;
 
     // instantiation: ALU
@@ -502,5 +516,6 @@ module pipeline_cpu
      */
     
     assign rd_din = wb.mem_to_reg ? wb.dmem_dout : wb.alu_result;  
+
 
 endmodule
