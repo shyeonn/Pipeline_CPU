@@ -15,7 +15,7 @@
 `timescale 1ns/1ps
 `define FF 1	// FF delay for just better waveform figures
 
-module dmem
+module dmem_unaligned
 #(	parameter	DMEM_DEPTH = 1024,		// dmem depth in a word (4 bytes, default: 1024 entries = 4 KB)
 				DMEM_ADDR_WIDTH = 12 )	// dmem address width in a byte
 (
