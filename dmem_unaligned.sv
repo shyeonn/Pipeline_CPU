@@ -63,7 +63,7 @@ module dmem
 		case (addr[1:0])	// synopsys full_case parallel_case
 			2'b00: dout_tmp = {dout3, dout2, dout1, dout0};
 			2'b01: dout_tmp = {dout0, dout3, dout2, dout1};
-			2'b10: dout_tmp = {dout1, dout2, dout3, dout2};
+			2'b10: dout_tmp = {dout1, dout0, dout3, dout2};
 			2'b11: dout_tmp = {dout2, dout1, dout0, dout3};
 		endcase
 	end
@@ -112,8 +112,7 @@ module dmem
 	always_ff @ (posedge clk) begin
 		if (we[0]) d0[addr0] <= din_tmp[7:0];
 		if (we[1]) d1[addr1] <= din_tmp[15:8];
-		if (we[2]) d2[addr2] <= din_tmp[24:16];
-		if (we[3]) d3[addr3] <= din_tmp[31:25];
+		if (we[2]) d2[addr2] <= din_tmp[23:16];
+		if (we[3]) d3[addr3] <= din_tmp[31:24];
 	end
-	
 endmodule
