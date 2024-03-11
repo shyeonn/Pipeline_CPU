@@ -41,7 +41,7 @@ typedef struct packed {
     logic           use_rs2; //Cheking for use the rs2 register
 
     logic           jump;
-    logic           u_type;
+    logic   [1:0]   u_type;
 } pipe_id_ex;
 
 // Pipe reg: EX/MEM
@@ -166,6 +166,8 @@ module pipeline_cpu
     logic           mem_read, mem_write, reg_write; // declared above
     logic   [6:0]   funct7;
     logic   [2:0]   funct3;
+    logic           jump;
+    logic   [1:0]   u_type;
 
     assign opcode = id.inst[6:0];
     assign branch[0] = ((opcode==7'b1100011) && (funct3==3'b000)) ? 1'b1: 1'b0;
@@ -179,15 +181,17 @@ module pipeline_cpu
     assign mem_write = (opcode==7'b0100011) ? 1'b1: 1'b0;   // sd
     assign mem_to_reg = mem_read;
     // ld, r-type, i-type, u-type or uj-type
-    assign reg_write = (opcode==7'b0110011) | (opcode==7'b0010011) | mem_read | u_type | jump; 
+    assign reg_write = (opcode==7'b0110011) | (opcode==7'b0010011) | mem_read | (|u_type) | jump; 
     // ld, sd, i-type or u-type
-    assign alu_src = ( mem_read | mem_write | (opcode==7'b0010011) | u_type) ? 1'b1: 1'b0;   
+    assign alu_src = ( mem_read | mem_write | (opcode==7'b0010011) | (|u_type)) ? 1'b1: 1'b0;   
 
     assign alu_op[0] = |branch;
     assign alu_op[1] = (opcode==7'b0110011) | (opcode==7'b0010011);    // r-type or i-type
 
-    assign jump = ~|(opcode ^ 7'b1100111) | ~|(opcode ^ 7'b1101111);
-    assign u_type = ~|(opcode ^ 7'b0010111) | ~|(opcode ^ 7'b0110111);
+    assign jump = (opcode==7'b1100111) | (opcode==7'b1101111);
+    // u_type[0] = lui , u_type[1] = auipc
+    assign u_type[0] = opcode == 7'b0110111;
+    assign u_type[1] = opcode == 7'b0010111;
 
 
     // --------------------------------------------------------------------
@@ -207,8 +211,8 @@ module pipeline_cpu
                 ( (mem_write) ? {id.inst[31:25], id.inst[11:7]}: id.inst[31:20] );
     assign imm32_jal = {{12{inst[31]}}, inst[19:12], inst[20], inst[30:21]}; //JAL
 
-	assign imm32 = u_type : {id.inst[31:12], 12'b0}
-        ? ((jump & opcode[3]) ? imm32_jal : ({{20{imm12[11]}}, imm12})); //u, jal, jalr
+	assign imm32 = |u_type ? {id.inst[31:12], 12'b0}
+        : ((jump & opcode[3]) ? imm32_jal : ({{20{imm12[11]}}, imm12})); //u, jal, jalr
 
     assign imm32_branch = {ex.imm32[30:0], 1'b0}; // From execute stage
 
@@ -405,8 +409,8 @@ module pipeline_cpu
     //logic           alu_zero;   // will not be used
     
     //LUI input is zero, AUIPC input is PC
-    assign u_type_rs1 = (ex.opcode == 7'b0110111) ? 'b0 : ex.pc; 
-    assign alu_in1 = ex.u_type ? u_type_rs1 : alu_fwd_in1; 
+    assign u_type_rs1 = ex.u_type[0] ? 'b0 : ex.pc; 
+    assign alu_in1 = |ex.u_type ? u_type_rs1 : alu_fwd_in1; 
     assign alu_in2 = alu_fwd_in2;
 
     // instantiation: ALU
@@ -474,7 +478,7 @@ module pipeline_cpu
 	assign access_size = funct3[1:0];
 
     // instantiation: data memory
-    dmem #(
+    dmem_unaligned #(
         .DMEM_DEPTH         (DMEM_DEPTH),
         .DMEM_ADDR_WIDTH    (DMEM_ADDR_WIDTH)
     ) u_dmem_0 (
