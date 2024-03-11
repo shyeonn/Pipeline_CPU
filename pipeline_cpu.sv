@@ -205,15 +205,16 @@ module pipeline_cpu
 
     assign imm12 = (|branch) ? {id.inst[31], id.inst[7], id.inst[30:25], id.inst[11:8]}: 
                 ( (mem_write) ? {id.inst[31:25], id.inst[11:7]}: id.inst[31:20] );
-    assign imm_jal = {{12{inst[31]}}, inst[19:12], inst[20], inst[30:21]}; //JAL
+    assign imm32_jal = {{12{inst[31]}}, inst[19:12], inst[20], inst[30:21]}; //JAL
 
 	assign imm32 = u_type : {id.inst[31:12], 12'b0}
-        ? ((jump & opcode[3]) ? imm_jal : ({{20{imm12[11]}}, imm12}));
+        ? ((jump & opcode[3]) ? imm32_jal : ({{20{imm12[11]}}, imm12})); //u, jal, jalr
 
     assign imm32_branch = {ex.imm32[30:0], 1'b0}; // From execute stage
 
     // Computing branch target
     assign pc_next_branch = ex.pc + imm32_branch;
+    assign pc_next_branch = ex.pc + ((ex.jump & !opcode[3]) ? ex.imm32 : imm32_branch);  // UJ / SB
 
     // ----------------------------------------------------------------------
 
@@ -311,8 +312,9 @@ module pipeline_cpu
                 ex.rd <= rd;
                 ex.reg_write <= reg_write;
                 ex.mem_to_reg <= mem_to_reg;
-
                 ex.use_rs2 <= use_rs2;
+                ex.jump <= jump;
+                ex.u_type <= u_type;
             end
         end
     end
@@ -359,7 +361,7 @@ module pipeline_cpu
                 default: alu_control = (use_rs2 & (ex.funct7[5])) ? 4'b0110: 4'b0010;
             endcase
         end else begin
-            alu_control = (ex.alu_op[0]) ? 4'b0110: 4'b0010; // branch / ld/st
+            alu_control =  4'b0010; //  ld/st and U, UJ type
         end
     end
 
