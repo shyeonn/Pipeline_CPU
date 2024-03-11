@@ -160,7 +160,7 @@ module pipeline_cpu
      * Generating control signals using opcode = inst[6:0]
      */
     logic   [6:0]   opcode;
-    logic   [3:0]   branch;
+    logic   [5:0]   branch;
     logic           alu_src, mem_to_reg;
     logic   [1:0]   alu_op;
     logic           mem_read, mem_write, reg_write; // declared above
@@ -172,6 +172,8 @@ module pipeline_cpu
     assign branch[1] = ((opcode==7'b1100011) && (funct3==3'b001)) ? 1'b1: 1'b0;
     assign branch[2] = ((opcode==7'b1100011) && (funct3==3'b100)) ? 1'b1: 1'b0;
     assign branch[3] = ((opcode==7'b1100011) && (funct3==3'b101)) ? 1'b1: 1'b0;
+    assign branch[4] = ((opcode==7'b1100011) && (funct3==3'b110)) ? 1'b1: 1'b0;
+    assign branch[5] = ((opcode==7'b1100011) && (funct3==3'b111)) ? 1'b1: 1'b0;
 
     assign mem_read = (opcode==7'b0000011) ? 1'b1: 1'b0;    // ld
     assign mem_write = (opcode==7'b0100011) ? 1'b1: 1'b0;   // sd
@@ -419,14 +421,17 @@ module pipeline_cpu
 
     // branch unit (BU)
     logic   [REG_WIDTH-1:0] sub_for_branch;
-    logic           bu_zero, bu_sign;
+    logic           bu_zero, bu_sign, bu_less;
     //logic           branch_taken;
 
     assign sub_for_branch = alu_in1 - alu_in2; 
     assign bu_zero =  !sub_for_branch;
     assign bu_sign = sub_for_branch[REG_WIDTH-2];
+    assign bu_less = alu_in1 < alu_in2;
+
     assign branch_taken = (ex.branch[0] & bu_zero) | (ex.branch[1] & ~bu_zero) 
-    | (ex.branch[2] & bu_sign) | (ex.branch[3] & ~bu_sign);
+    | (ex.branch[2] & bu_sign) | (ex.branch[3] & ~bu_sign)
+    | (ex.branch[4] & bu_less) | (ex.branch[5] & ~bu_less);
 
     // -------------------------------------------------------------------------
     /* Ex/MEM pipeline register
