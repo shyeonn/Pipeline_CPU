@@ -5,7 +5,7 @@
 #include "Vpipeline_cpu.h"
 
 #define CLK_T 10
-#define CLK_NUM 60
+#define CLK_NUM 100
 #define RST_OFF 2	// reset if released after this clock counts
 
 int main(int argc, char** argv, char** env) {
@@ -33,7 +33,7 @@ int main(int argc, char** argv, char** env) {
 		dut->eval();
 		if ((dut->clk==0) && (cc==CLK_NUM/2)) {
 			for (int i = 0; i < 32; i++) {
-				fprintf(fp, "RF[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_regfile_0__DOT__rf_data[i]);
+			//	fprintf(fp, "RF[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_regfile_0__DOT__rf_data[i]);
 			}
 			for (int i = 0; i < 9; i++) {
 				fprintf(fp, "DMEM[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_dmem_0__DOT__data[i]);
@@ -47,10 +47,10 @@ int main(int argc, char** argv, char** env) {
 	m_trace->dump(tick);
 
 	for (int i = 0; i < 32; i++) {
-		fprintf(fp, "RF[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_regfile_0__DOT__rf_data[i]);
+//		fprintf(fp, "RF[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_regfile_0__DOT__rf_data[i]);
 	}
 	for (int i = 0; i < 9; i++) {
-		fprintf(fp, "DMEM[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_dmem_0__DOT__data[i]);
+//		fprintf(fp, "DMEM[%02d]: %016lx\n", i, dut->pipeline_cpu__DOT__u_dmem_0__DOT__data[i]);
 	}
 
 	fclose(fp);
