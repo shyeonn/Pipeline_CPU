@@ -38,8 +38,8 @@ module regfile
     end
 
     // Read operation supporting internal forwarding
-    assign rs1_dout = (reg_write & (rs1==rd)) ? rd_din: ((|rs1) ? rf_data[rs1]: 'b0);
-    assign rs2_dout = (reg_write & (rs2==rd)) ? rd_din: ((|rs2) ? rf_data[rs2]: 'b0);
+    assign rs1_dout = (reg_write & (rs1==rd) & |rd) ? rd_din: ((|rs1) ? rf_data[rs1]: 'b0);
+    assign rs2_dout = (reg_write & (rs2==rd) & |rd) ? rd_din: ((|rs2) ? rf_data[rs2]: 'b0);
    
     // Read operation (no internal forwarding)
     //assign rs1_dout = (|rs1) ? rf_data[rs1]: 'b0;
