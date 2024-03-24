@@ -33,7 +33,7 @@ module regfile
     // - Note that clock is not used in the textbook, however in RTL design it can generate a infinite loop without clock.
     // Thus, the write operation is done at the rising edge of clock
     always_ff @ (posedge clk) begin
-        if (reg_write)
+        if (reg_write & |rd)
             rf_data[rd] <= rd_din;
     end
 
@@ -52,3 +52,4 @@ module regfile
 // synthesis translate_on
 
 endmodule
+
