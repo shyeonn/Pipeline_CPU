@@ -42,17 +42,22 @@ typedef struct packed {
 
     logic           jump;
     logic   [1:0]   u_type;
+    logic   [31:0]  pc_next_branch;
 } pipe_id_ex;
 
 // Pipe reg: EX/MEM
 typedef struct packed {
     logic   [31:0]  alu_result; // for address
     logic   [31:0]  rs2_dout;   // for store
+    //logic   [31:0]  alu_in2;   // for store
     logic           mem_read;
     logic           mem_write;
     logic   [4:0]   rd;
     logic           reg_write;
     logic           mem_to_reg;
+    logic   [1:0]   mem_size;
+    //for the memory instruction
+    logic   [1:0]   funct3;
 } pipe_ex_mem;
 
 // Pipe reg: MEM/WB
@@ -91,7 +96,7 @@ module pipeline_cpu
     //logic           regfile_zero;   // zero detection from regfile, REMOVED
 
     assign pc_next_plus4 = pc_curr + 4;
-    assign pc_next_sel = branch_taken;
+    assign pc_next_sel = branch_taken | jump;
     assign pc_next = (pc_next_sel) ? pc_next_branch : pc_next_plus4;
 
     always_ff @ (posedge clk or negedge reset_b) begin
@@ -181,7 +186,7 @@ module pipeline_cpu
     assign mem_write = (opcode==7'b0100011) ? 1'b1: 1'b0;   // sd
     assign mem_to_reg = mem_read;
     // ld, r-type, i-type, u-type or uj-type
-    assign reg_write = (opcode==7'b0110011) | (opcode==7'b0010011) | mem_read | (|u_type) | jump; 
+    assign reg_write = (opcode==7'b0110011) | (opcode==7'b0010011) | mem_read | (|u_type) | jump;
     // ld, sd, i-type or u-type
     assign alu_src = ( mem_read | mem_write | (opcode==7'b0010011) | (|u_type)) ? 1'b1: 1'b0;   
 
@@ -205,11 +210,11 @@ module pipeline_cpu
 
     // COMPLETE IMMEDIATE GENERATOR HERE
     logic   [11:0]  imm12;
-    logic   [REG_WIDTH-2:0]  imm_jal;
+    logic   [31:0]  imm32_jal;
 
     assign imm12 = (|branch) ? {id.inst[31], id.inst[7], id.inst[30:25], id.inst[11:8]}: 
                 ( (mem_write) ? {id.inst[31:25], id.inst[11:7]}: id.inst[31:20] );
-    assign imm32_jal = {{12{inst[31]}}, inst[19:12], inst[20], inst[30:21]}; //JAL
+    assign imm32_jal = {{12{id.inst[31]}}, id.inst[19:12], id.inst[20], id.inst[30:21], 1'b0}; //JAL
 
 	assign imm32 = |u_type ? {id.inst[31:12], 12'b0}
         : ((jump & opcode[3]) ? imm32_jal : ({{20{imm12[11]}}, imm12})); //u, jal, jalr
@@ -217,8 +222,7 @@ module pipeline_cpu
     assign imm32_branch = {ex.imm32[30:0], 1'b0}; // From execute stage
 
     // Computing branch target
-    assign pc_next_branch = ex.pc + imm32_branch;
-    assign pc_next_branch = ex.pc + ((ex.jump & !opcode[3]) ? ex.imm32 : imm32_branch);  // UJ / SB
+    assign pc_next_branch = ((jump & opcode[3]) ? id.pc + imm32 : ex.pc + imm32_branch);  // UJ / SB
 
     // ----------------------------------------------------------------------
 
@@ -319,6 +323,7 @@ module pipeline_cpu
                 ex.use_rs2 <= use_rs2;
                 ex.jump <= jump;
                 ex.u_type <= u_type;
+                ex.pc_next_branch <= pc_next_branch;
             end
         end
     end
@@ -362,7 +367,7 @@ module pipeline_cpu
                 3'b010: alu_control = 4'b0110; //set less then
                 3'b011: alu_control = 4'b0110; //set less then unsigned
                 //sub / add
-                default: alu_control = (use_rs2 & (ex.funct7[5])) ? 4'b0110: 4'b0010;
+                default: alu_control = (ex.use_rs2 & (ex.funct7[5])) ? 4'b0110: 4'b0010;
             endcase
         end else begin
             alu_control =  4'b0010; //  ld/st and U, UJ type
@@ -389,16 +394,19 @@ module pipeline_cpu
 
 	// COMPLETE THE FORWARDING UNIT
     // Need to prioritize forwarding conditions
+   
 
     //MEM hazard
     assign forward_a[0] = (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs1)) ? 1'b1 : 1'b0;
     assign forward_b[0] = ex.use_rs2 & 
-        ((wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0);
+        (wb.reg_write && (wb.rd != 0) && (wb.rd == ex.rs2)) ? 1'b1 : 1'b0;
+
 
     //EX hazard (If MEM and EX hazard generate at once, then ignore the MEM hazard signal)
     assign forward_a[1] = (mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs1)) ? 1'b1 : 1'b0;
-    assign forward_b[1] = ex.use_rs2 & 
-        ((mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2)) ? 1'b1 : 1'b0);
+    assign forward_b[1] =  ex.use_rs2 &
+        (mem.reg_write && (mem.rd != 0) && (mem.rd == ex.rs2)) ? 1'b1 : 1'b0;
+
 
     // -----------------------------------------------------------------------
 
@@ -406,12 +414,15 @@ module pipeline_cpu
     logic   [REG_WIDTH-1:0] alu_in1, alu_in2;
     logic   [REG_WIDTH-1:0] alu_result;
     logic   [31:0] u_type_rs1;
+    logic   [REG_WIDTH-1:0] rs2_fwd_dout;
     //logic           alu_zero;   // will not be used
     
     //LUI input is zero, AUIPC input is PC
     assign u_type_rs1 = ex.u_type[0] ? 'b0 : ex.pc; 
     assign alu_in1 = |ex.u_type ? u_type_rs1 : alu_fwd_in1; 
-    assign alu_in2 = alu_fwd_in2;
+    assign alu_in2 = (ex.mem_write & |forward_b) ? ex.imm32 : alu_fwd_in2;
+
+    assign rs2_fwd_dout = (ex.mem_write & |forward_b) ? alu_fwd_in2 : ex.rs2_dout;
 
     // instantiation: ALU
     alu #(
@@ -449,12 +460,13 @@ module pipeline_cpu
             mem <= 'b0;
         end else begin
             mem.alu_result <= alu_result;
-            mem.rs2_dout <= ex.rs2_dout;
+            mem.rs2_dout <= rs2_fwd_dout;
             mem.mem_read <= ex.mem_read;
             mem.mem_write <= ex.mem_write;
             mem.rd <= ex.rd;
             mem.reg_write <= ex.reg_write;
             mem.mem_to_reg <= ex.mem_to_reg;
+            mem.funct3 <= ex.funct3;
         end
     end
 
@@ -468,14 +480,14 @@ module pipeline_cpu
     logic   [DMEM_ADDR_WIDTH-1:0]    dmem_addr;
     logic   [31:0]  dmem_din, dmem_dout;
 
-    assign dmem_addr = mem.alu_result[DMEM_ADDR_WIDTH-1:2];
+    assign dmem_addr = mem.alu_result[DMEM_ADDR_WIDTH-1:0];
     assign dmem_din =  mem.rs2_dout;
     
     //For unaligned memmory
 	logic [1:0]		access_size;
 	logic [31:0]	dmem_dout_raw;
 
-	assign access_size = funct3[1:0];
+	assign access_size = mem.funct3[1:0];
 
     // instantiation: data memory
     dmem_unaligned #(
@@ -493,9 +505,9 @@ module pipeline_cpu
 
 	always_comb begin
 		case (access_size)
-		  2'b00 : dmem_dout = funct3[2] ? {24'b0, dmem_dout_raw[7:0]} 
+		  2'b00 : dmem_dout = mem.funct3[2] ? {24'b0, dmem_dout_raw[7:0]} 
           : {{24{dmem_dout_raw[7]}}, dmem_dout_raw[7:0]};
-		  2'b01 : dmem_dout = funct3[2] ? {16'b0, dmem_dout_raw[15:0]} 
+		  2'b01 : dmem_dout = mem.funct3[2] ? {16'b0, dmem_dout_raw[15:0]} 
           : {{16{dmem_dout_raw[15]}}, dmem_dout_raw[15:0]};
 		  2'b10 : dmem_dout = dmem_dout_raw;
 		endcase 
